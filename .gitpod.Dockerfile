@@ -1,6 +1,7 @@
 FROM cosmwasm/cw-gitpod-base:v0.16
 
-RUN cd /home/gitpod && \
+RUN export GOPATH=$HOME/go && \
+    cd /home/gitpod && \
     /usr/bin/git clone https://github.com/CosmosContracts/juno && \
     cd juno && \
     /usr/bin/git checkout v11.0.3 && \
