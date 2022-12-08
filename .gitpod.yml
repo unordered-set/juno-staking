@@ -4,12 +4,12 @@ vscode:
   extensions:
     - rust-lang.rust-analyzer
 
-tasks:
-  - name: Dependencies & Build
-    init: |
-      cd /home/gitpod && \
-      /usr/bin/git clone https://github.com/CosmosContracts/juno && \
-      cd juno && \
-      /usr/bin/git checkout v11.0.3 && \
-      /usr/bin/make install && \
-      cargo build
+# tasks:
+  # - name: Dependencies & Build
+    # init: |
+    #   cd /home/gitpod && \
+    #   /usr/bin/git clone https://github.com/CosmosContracts/juno && \
+    #   cd juno && \
+    #   /usr/bin/git checkout v11.0.3 && \
+    #   /usr/bin/make install && \
+    #   cargo build
