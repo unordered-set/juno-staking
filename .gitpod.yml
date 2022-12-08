@@ -1,5 +1,4 @@
-image:
-  file: .gitpod.Dockerfile
+image: cosmwasm/cw-gitpod-base:v0.16
 
 vscode:
   extensions:
@@ -8,4 +7,9 @@ vscode:
 tasks:
   - name: Dependencies & Build
     init: |
+      cd /home/gitpod && \
+      /usr/bin/git clone https://github.com/CosmosContracts/juno && \
+      cd juno && \
+      /usr/bin/git checkout v11.0.3 && \
+      /usr/bin/make install && \
       cargo build
