@@ -1,7 +1,7 @@
 # FROM cosmwasm/cw-gitpod-base:v0.16
 
 ### wasmd ###
-FROM cosmwasm/wasmd:v0.18.0 as wasmd
+FROM cosmwasm/wasmd:v0.30.0 as wasmd
 
 ### rust-optimizer ###
 FROM cosmwasm/rust-optimizer:0.11.5 as rust-optimizer
