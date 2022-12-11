@@ -2,9 +2,15 @@ FROM cosmwasm/cw-gitpod-base:v0.16
 
 RUN cd /home/gitpod && \
     wget https://golang.org/dl/go1.19.2.linux-amd64.tar.gz && \
+    mkdir /home/gitpod/go1.19.2 && \
     tar -C /home/gitpod/go1.19.2 -xzf go1.19.2.linux-amd64.tar.gz && \
     /usr/bin/git clone https://github.com/CosmosContracts/juno && \
     cd juno && \
     /usr/bin/git checkout v11.0.3 && \
-    export PATH=/home/gitpod/go1.19.2/go/bin:$PATH && \
-    /usr/bin/make install
+    export GOROOT=/home/gitpod/go1.19.2/go && \
+    export PATH="${GOROOT}/bin:$PATH" && \
+    export GOPATH="${GOROOT}" && \
+    export GOVERSION="go1.19.2" && \
+    echo "GO=" && which go && \
+    /usr/bin/make install && \
+    sudo cp /home/gitpod/go1.19.2/go/bin/junod /usr/bin
