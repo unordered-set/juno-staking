@@ -2,10 +2,11 @@
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{to_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdResult};
 use cw2::set_contract_version;
+use cw20::{Cw20ReceiveMsg};
 
 use crate::error::ContractError;
 use crate::msg::{ExecuteMsg, GetCountResponse, InstantiateMsg, QueryMsg};
-use crate::state::{State, STATE};
+use crate::state::{State, STATE, StakingStatus, STAKING_STATUS};
 
 // version info for migration info
 const CONTRACT_NAME: &str = "crates.io:juno-staking";
@@ -24,11 +25,18 @@ pub fn instantiate(
     };
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
     STATE.save(deps.storage, &state)?;
+    let staking_status = StakingStatus {
+        token: msg.token_addr,
+        rewards_per_day: msg.rewards_per_day,
+        staking_started: _env.block.time,
+    };
+    STAKING_STATUS.save(deps.storage, &staking_status)?;
 
     Ok(Response::new()
         .add_attribute("method", "instantiate")
-        .add_attribute("owner", info.sender)
-        .add_attribute("count", msg.count.to_string()))
+        .add_attribute("token", staking_status.token.as_str())
+        .add_attribute("rewards_per_day", staking_status.rewards_per_day.to_string())
+        .add_attribute("staking_started", staking_status.staking_started.to_string()))
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -41,10 +49,14 @@ pub fn execute(
     match msg {
         ExecuteMsg::Increment {} => execute::increment(deps),
         ExecuteMsg::Reset { count } => execute::reset(deps, info, count),
+        ExecuteMsg::Unstake { count } => execute::unstake(deps, info, count),
+        ExecuteMsg::Receive(msg) => execute::receive(deps, _env, info, msg),
     }
 }
 
 pub mod execute {
+    use cosmwasm_std::Uint128;
+
     use super::*;
 
     pub fn increment(deps: DepsMut) -> Result<Response, ContractError> {
@@ -65,6 +77,14 @@ pub mod execute {
             Ok(state)
         })?;
         Ok(Response::new().add_attribute("action", "reset"))
+    }
+
+    pub fn unstake(deps: DepsMut, info: MessageInfo, count: Uint128) -> Result<Response, ContractError> {
+        return Ok(Response::new())
+    }
+
+    pub fn receive(deps: DepsMut, _env: Env, info: MessageInfo, wrapper: Cw20ReceiveMsg) -> Result<Response, ContractError> {
+        return Ok(Response::new())
     }
 }
 

@@ -1,7 +1,7 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{Addr, Uint128};
+use cosmwasm_std::{Addr, Uint128, Timestamp};
 use cw_storage_plus::{Item, Map, VecDeque};
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema)]
@@ -16,7 +16,7 @@ pub const STATE: Item<State> = Item::new("state");
 pub struct StakingStatus {
     pub token: Addr,
     pub rewards_per_day: Uint128,
-    pub staking_started: u32
+    pub staking_started: Timestamp,
 }
 
 pub struct StakeInfo {
@@ -25,5 +25,5 @@ pub struct StakeInfo {
 }
 
 pub const DAILY_TOKEN_AMOUNT: VecDeque<Uint128> = VecDeque::new("dta");
-pub const STAKING_INFO: Item<StakingStatus> = Item::new("stakingStatus");
+pub const STAKING_STATUS: Item<StakingStatus> = Item::new("stakingStatus");
 pub const STAKES: Map<Addr, StakeInfo> = Map::new("stakes");
