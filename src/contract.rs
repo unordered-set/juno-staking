@@ -2,7 +2,7 @@
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{to_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdResult};
 use cw2::set_contract_version;
-use cw20::{Cw20ReceiveMsg};
+use cw20::{Cw20ReceiveMsg, Cw20CoinVerified};
 
 use crate::error::ContractError;
 use crate::msg::{ExecuteMsg, GetCountResponse, InstantiateMsg, QueryMsg};
@@ -48,14 +48,16 @@ pub fn execute(
 ) -> Result<Response, ContractError> {
     match msg {
         ExecuteMsg::Increment {} => execute::increment(deps),
-        ExecuteMsg::Reset { count } => execute::reset(deps, info, count),
+        // ExecuteMsg::Reset { count } => execute::reset(deps, info, count),
         ExecuteMsg::Unstake { count } => execute::unstake(deps, info, count),
         ExecuteMsg::Receive(msg) => execute::receive(deps, _env, info, msg),
     }
 }
 
 pub mod execute {
-    use cosmwasm_std::Uint128;
+    use cosmwasm_std::{Uint128, from_slice, Addr, Timestamp};
+    use cw20::Balance;
+    use crate::{msg::ReceiveMsg, state::{DAILY_TOKEN_AMOUNT, StakeChangeEvent, STAKES, StakeInfo}};
 
     use super::*;
 
@@ -68,15 +70,54 @@ pub mod execute {
         Ok(Response::new().add_attribute("action", "increment"))
     }
 
-    pub fn reset(deps: DepsMut, info: MessageInfo, count: i32) -> Result<Response, ContractError> {
-        STATE.update(deps.storage, |mut state| -> Result<_, ContractError> {
-            if info.sender != state.owner {
-                return Err(ContractError::Unauthorized {});
+    // pub fn reset(deps: DepsMut, info: MessageInfo, count: i32) -> Result<Response, ContractError> {
+    //     STATE.update(deps.storage, |mut state| -> Result<_, ContractError> {
+    //         if info.sender != state.owner {
+    //             return Err(ContractError::Unauthorized {});
+    //         }
+    //         state.count = count;
+    //         Ok(state)
+    //     })?;
+    //     Ok(Response::new().add_attribute("action", "reset"))
+    // }
+
+    pub fn stake(deps: DepsMut, _env: Env, info: MessageInfo, balance: Balance, sender: Addr) -> Result<Response, ContractError> {
+        match balance {
+            Balance::Native(_) => Err(ContractError::WrongCurrency {  }),
+            Balance::Cw20(have) => {
+                let convert_to_midnight = |t: Timestamp| {
+                    let extra = t.nanos() % (24 * 3600 * 1000000000);
+                    t.minus_nanos(extra)
+                };
+                let today = convert_to_midnight(_env.block.time);
+                let (prev_amount, prev_date) = match DAILY_TOKEN_AMOUNT.len(deps.storage)? {
+                    0 => { (Uint128::from(0u64), today) },
+                    _ => {
+                        let data = DAILY_TOKEN_AMOUNT.back(deps.storage)?.unwrap();
+                        (data.new_amount, data.timestamp)
+                    }
+                };
+                if today < prev_date {
+                    // We are still modifying the stake for tomorrow. Also, we are sure that
+                    // the record exists, as because it is not, we will be having prev_date == today.
+                    DAILY_TOKEN_AMOUNT.pop_back(deps.storage)?;
+                    DAILY_TOKEN_AMOUNT.push_back(deps.storage, &StakeChangeEvent{
+                        timestamp: prev_date,
+                        new_amount: prev_amount + have.amount,
+                    })?;
+                } else {
+                    // today >= prev_day -- so we need a new record
+                    DAILY_TOKEN_AMOUNT.push_back(deps.storage, &StakeChangeEvent{
+                        timestamp: today.plus_nanos(24 * 3600 * 1000000000),
+                        new_amount: have.amount,
+                    })?;
+                }
+                STAKES.update(deps.storage, sender, |stake| -> StdResult<_> {
+                    Ok(stake.unwrap_or_default().amount + have.amount)
+                })?;
+                Ok(Response::new())
             }
-            state.count = count;
-            Ok(state)
-        })?;
-        Ok(Response::new().add_attribute("action", "reset"))
+        }
     }
 
     pub fn unstake(deps: DepsMut, info: MessageInfo, count: Uint128) -> Result<Response, ContractError> {
@@ -84,7 +125,23 @@ pub mod execute {
     }
 
     pub fn receive(deps: DepsMut, _env: Env, info: MessageInfo, wrapper: Cw20ReceiveMsg) -> Result<Response, ContractError> {
-        return Ok(Response::new())
+        let stakingStatus = STAKING_STATUS.load(deps.storage)?;
+        if info.sender != stakingStatus.token {
+            return Err(ContractError::WrongCurrency {  });
+        }
+    
+        let msg: ReceiveMsg = from_slice(&wrapper.msg)?;
+        let balance = Balance::Cw20(Cw20CoinVerified {
+            address: info.sender.clone(),
+            amount: wrapper.amount,
+        });
+        let api = deps.api;
+        match msg {
+            ReceiveMsg::Stake {} => {
+                stake(deps, _env, info, balance, api.addr_validate(&wrapper.sender)?)
+            },
+            ReceiveMsg::AddToBank {} => Ok(Response::new()),
+        }
     }
 }
 

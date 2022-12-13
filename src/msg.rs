@@ -12,7 +12,7 @@ pub struct InstantiateMsg {
 #[cw_serde]
 pub enum ExecuteMsg {
     Increment {},
-    Reset { count: i32 },
+    // Reset { count: i32 },
     Unstake { count: Uint128 },
 
     /// This accepts a properly-encoded ReceiveMsg from a cw20 contract
