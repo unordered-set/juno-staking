@@ -55,8 +55,11 @@ pub fn execute(
 }
 
 pub mod execute {
-    use cosmwasm_std::{Uint128, from_slice, Addr, Timestamp};
+    use std::cmp::max;
+
+    use cosmwasm_std::{Uint128, from_slice, Addr, Timestamp, OverflowError, Storage};
     use cw20::Balance;
+    use cw_storage_plus::VecDeque;
     use crate::{msg::ReceiveMsg, state::{DAILY_TOKEN_AMOUNT, StakeChangeEvent, STAKES, StakeInfo}};
 
     use super::*;
@@ -90,6 +93,7 @@ pub mod execute {
                     t.minus_nanos(extra)
                 };
                 let today = convert_to_midnight(_env.block.time);
+                let tomorrow = today.plus_nanos(24 * 3600 * 1000000000);
                 let (prev_amount, prev_date) = match DAILY_TOKEN_AMOUNT.len(deps.storage)? {
                     0 => { (Uint128::from(0u64), today) },
                     _ => {
@@ -108,16 +112,45 @@ pub mod execute {
                 } else {
                     // today >= prev_day -- so we need a new record
                     DAILY_TOKEN_AMOUNT.push_back(deps.storage, &StakeChangeEvent{
-                        timestamp: today.plus_nanos(24 * 3600 * 1000000000),
+                        timestamp: tomorrow,
                         new_amount: have.amount,
                     })?;
                 }
-                STAKES.update(deps.storage, sender, |stake| -> StdResult<_> {
-                    Ok(stake.unwrap_or_default().amount + have.amount)
-                })?;
+
+                let current_staked_amount = STAKES.load(deps.storage, sender.clone()).unwrap_or(StakeInfo{amount: Uint128::from(0u64), stake_started: today});
+                let staked_plus_rewards = compute_rewards(deps.storage, &current_staked_amount, tomorrow).unwrap();
+                STAKES.save(deps.storage, sender, &StakeInfo{
+                    amount: staked_plus_rewards + have.amount,
+                    stake_started: tomorrow,
+                }).unwrap();
                 Ok(Response::new())
             }
         }
+    }
+
+    pub fn compute_rewards(storage: &mut dyn Storage, stake_info: &StakeInfo, now: Timestamp) -> Result<Uint128, ContractError> {
+        let mut ts = now;
+        let total_events = DAILY_TOKEN_AMOUNT.len(storage)?;
+        let staking_status = STAKING_STATUS.load(storage)?;
+        let mut total_rewards = Uint128::from(0u64);
+        let mut last_stake_changed_event_index = total_events;
+        while last_stake_changed_event_index > 0 {
+            last_stake_changed_event_index -= 1;
+            let last_event = DAILY_TOKEN_AMOUNT.get(storage, last_stake_changed_event_index)?.unwrap();
+            let duration_days = Uint128::from((ts.nanos() - max(last_event.timestamp.nanos(), stake_info.stake_started.nanos())) / (1000000000u64 * 3600 * 24));
+            let staked_in_this_period_total = last_event.new_amount;
+            let rewards = 
+                staking_status.rewards_per_day
+                    .checked_mul(duration_days)
+                    .and_then(|tr: Uint128| { tr.checked_mul(stake_info.amount) })
+                    .and_then(|tr: Uint128| { tr.checked_div(staked_in_this_period_total).map_err(|_| { OverflowError::new(cosmwasm_std::OverflowOperation::Add, "1", "1") }) }).unwrap();
+            total_rewards = total_rewards.checked_add(rewards).unwrap();
+            if last_event.timestamp.nanos() <= stake_info.stake_started.nanos() {
+                break
+            }
+            ts = last_event.timestamp;
+        }
+        Ok(total_rewards)
     }
 
     pub fn unstake(deps: DepsMut, info: MessageInfo, count: Uint128) -> Result<Response, ContractError> {
